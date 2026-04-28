@@ -1,6 +1,7 @@
 import requests
 import time
 import os
+import json
 from groq import Groq
 from serpapi import GoogleSearch
 
@@ -10,36 +11,232 @@ SERPAPI_KEY = os.environ.get("SERPAPI_KEY")
 
 client = Groq(api_key=GROQ_API_KEY)
 
-SYSTEM_PROMPT = """You are an expert business idea consultant who helps people develop their business ideas through conversation.
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Search the web for current information about monetization tools, platforms, affiliate programs, SEO strategies, traffic methods, or any online business topic. Use this before recommending any tool or platform to make sure it's legitimate and currently working.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query. Be specific. Example: 'best affiliate programs for recipe blogs 2024' or 'Linkvertise alternatives less annoying users'"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_news",
+            "description": "Find the latest news about a topic. Use this to find trending topics the user can write about to get SEO traffic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The news search query. Example: 'recipe trends 2024' or 'personal finance tips trending'"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_trends",
+            "description": "Find Google Trends data for a topic to understand if it's growing or declining in popularity.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The topic to check trends for. Example: 'keto diet' or 'AI tools'"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
+]
 
-You have access to real-time data — when needed, the system will provide you with current trends, news, and competitor information. Use this data naturally in your responses.
+SYSTEM_PROMPT = """You are an expert online income consultant and digital marketing advisor. Your job is to help people make real money online.
 
-Your conversational style:
-- Never analyze everything at once. Instead, ask ONE focused question at a time to understand the idea better.
-- Listen carefully to the answers and build on them in the next question.
-- Be encouraging but honest — if there's a problem, mention it gently.
-- Keep your responses concise and conversational, not like a report.
+VERY IMPORTANT: Before recommending ANY tool, platform, affiliate program, or strategy, you MUST use your search tools to research it first. Never recommend something without searching for it. This way your advice is always current and accurate.
 
-Follow this natural flow:
-1. First, make sure you understand the core idea. Ask what problem it solves.
-2. Then explore the target audience — who exactly would use this?
-3. Then dig into competition — are there similar solutions out there?
-4. Then talk about monetization — how would it make money?
-5. Then discuss risks — what could go wrong?
-6. Finally, give a brief honest summary of the idea's potential.
+When a user comes to you, follow this flow:
 
-Special commands the user can use:
-- /trends [topic] — find viral trends about a topic
-- /news [topic] — find latest news about a topic
-- /competitors [topic] — find competitors in a market
+STEP 1 - UNDERSTAND THEIR SITUATION:
+Ask ONE question at a time to understand:
+- Do they have a website, blog, YouTube, or social media?
+- What is their niche/topic?
+- How much traffic do they get?
+- Have they tried making money before?
 
-Important rules:
-- Ask only ONE question per message.
-- Never dump a list of questions or a long analysis all at once.
-- If the user seems stuck, give a short example to help them think.
-- Always respond in English."""
+STEP 2 - RESEARCH THEN RECOMMEND:
+For every monetization method you want to suggest:
+1. First search for it: "best [method] for [their niche] [current year]"
+2. Check if it's still working well
+3. Then recommend it with specific realistic earnings
+
+STEP 3 - SEO & TRAFFIC:
+When they need more traffic:
+1. Search for trending topics in their niche
+2. Search for latest news in their niche
+3. Suggest specific article titles they can write
+
+STEP 4 - PROACTIVE THINKING:
+Always think ahead:
+- If a tool has downsides, search for better alternatives
+- If their niche is competitive, search for micro-niches
+- Always verify earning claims by searching current data
+
+RULES:
+- Ask only ONE question at a time
+- ALWAYS search before recommending
+- Give specific realistic earnings estimates
+- Mention free tools before paid ones
+- Be honest if something won't work
+- Always respond in English"""
 
 conversation_histories = {}
+
+def search_web(query):
+    try:
+        search = GoogleSearch({
+            "engine": "google",
+            "q": query,
+            "num": 5,
+            "api_key": SERPAPI_KEY
+        })
+        results = search.get_dict()
+        organic = results.get("organic_results", [])
+        if not organic:
+            return f"No results found for '{query}'."
+        text = f"Search results for '{query}':\n\n"
+        for i, item in enumerate(organic[:5], 1):
+            title = item.get("title", "")
+            snippet = item.get("snippet", "")[:150]
+            text += f"{i}. {title}\n   {snippet}\n\n"
+        return text
+    except Exception as e:
+        return f"Search failed: {e}"
+
+def search_news(query):
+    try:
+        search = GoogleSearch({
+            "engine": "google",
+            "q": query,
+            "tbm": "nws",
+            "num": 5,
+            "api_key": SERPAPI_KEY
+        })
+        results = search.get_dict()
+        news = results.get("news_results", [])
+        if not news:
+            return f"No news found for '{query}'."
+        text = f"Latest news for '{query}':\n\n"
+        for i, item in enumerate(news[:5], 1):
+            title = item.get("title", "")
+            source = item.get("source", "")
+            date = item.get("date", "")
+            text += f"{i}. {title}\n   📌 {source} — {date}\n\n"
+        return text
+    except Exception as e:
+        return f"News search failed: {e}"
+
+def search_trends(query):
+    try:
+        search = GoogleSearch({
+            "engine": "google_trends",
+            "q": query,
+            "api_key": SERPAPI_KEY
+        })
+        results = search.get_dict()
+        interest = results.get("interest_over_time", {}).get("timeline_data", [])
+        if not interest:
+            return f"No trend data found for '{query}'."
+        latest = interest[-1]
+        value = latest.get("values", [{}])[0].get("value", "N/A")
+        return f"Google Trends interest for '{query}': {value}/100"
+    except Exception as e:
+        return f"Trends search failed: {e}"
+
+def run_tool(tool_name, tool_args):
+    if tool_name == "search_web":
+        return search_web(tool_args["query"])
+    elif tool_name == "search_news":
+        return search_news(tool_args["query"])
+    elif tool_name == "search_trends":
+        return search_trends(tool_args["query"])
+    return "Unknown tool."
+
+def chat_with_groq(user_id, user_message):
+    if user_id not in conversation_histories:
+        conversation_histories[user_id] = []
+
+    conversation_histories[user_id].append({
+        "role": "user",
+        "content": user_message
+    })
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_histories[user_id]
+
+    while True:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            tools=TOOLS,
+            tool_choice="auto",
+            max_tokens=1024
+        )
+
+        message = response.choices[0].message
+
+        # Bot araç kullanmak istiyorsa
+        if message.tool_calls:
+            messages.append({
+                "role": "assistant",
+                "content": message.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    } for tc in message.tool_calls
+                ]
+            })
+
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = json.loads(tool_call.function.arguments)
+                print(f"🔍 Bot searching: {tool_name}({tool_args})")
+                result = run_tool(tool_name, tool_args)
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result
+                })
+
+        else:
+            # Normal cevap
+            reply = message.content
+
+            conversation_histories[user_id].append({
+                "role": "assistant",
+                "content": reply
+            })
+
+            return reply
 
 def get_updates(offset=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
@@ -57,91 +254,6 @@ def send_message(chat_id, text):
 def send_typing(chat_id):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendChatAction"
     requests.post(url, json={"chat_id": chat_id, "action": "typing"})
-
-def get_trends(topic):
-    try:
-        search = GoogleSearch({
-            "engine": "google_trends",
-            "q": topic,
-            "api_key": SERPAPI_KEY
-        })
-        results = search.get_dict()
-        interest = results.get("interest_over_time", {}).get("timeline_data", [])
-        if not interest:
-            return f"No trend data found for '{topic}'."
-        latest = interest[-1]
-        value = latest.get("values", [{}])[0].get("value", "N/A")
-        return f"📈 Google Trends interest for '{topic}': {value}/100 (latest data)"
-    except Exception as e:
-        return f"Could not fetch trends: {e}"
-
-def get_news(topic):
-    try:
-        search = GoogleSearch({
-            "engine": "google",
-            "q": topic,
-            "tbm": "nws",
-            "num": 5,
-            "api_key": SERPAPI_KEY
-        })
-        results = search.get_dict()
-        news_results = results.get("news_results", [])
-        if not news_results:
-            return f"No news found for '{topic}'."
-        news_text = f"📰 Latest news about '{topic}':\n\n"
-        for i, item in enumerate(news_results[:5], 1):
-            title = item.get("title", "No title")
-            source = item.get("source", "Unknown")
-            date = item.get("date", "")
-            news_text += f"{i}. {title}\n   📌 {source} {date}\n\n"
-        return news_text
-    except Exception as e:
-        return f"Could not fetch news: {e}"
-
-def get_competitors(topic):
-    try:
-        search = GoogleSearch({
-            "engine": "google",
-            "q": f"top companies {topic} startups",
-            "num": 5,
-            "api_key": SERPAPI_KEY
-        })
-        results = search.get_dict()
-        organic = results.get("organic_results", [])
-        if not organic:
-            return f"No competitor data found for '{topic}'."
-        comp_text = f"🏢 Competitors in '{topic}':\n\n"
-        for i, item in enumerate(organic[:5], 1):
-            title = item.get("title", "No title")
-            snippet = item.get("snippet", "")[:120]
-            comp_text += f"{i}. {title}\n   {snippet}...\n\n"
-        return comp_text
-    except Exception as e:
-        return f"Could not fetch competitors: {e}"
-
-def chat_with_groq(user_id, user_message):
-    if user_id not in conversation_histories:
-        conversation_histories[user_id] = []
-
-    conversation_histories[user_id].append({
-        "role": "user",
-        "content": user_message
-    })
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "system", "content": SYSTEM_PROMPT}] + conversation_histories[user_id],
-        max_tokens=1024
-    )
-
-    reply = response.choices[0].message.content
-
-    conversation_histories[user_id].append({
-        "role": "assistant",
-        "content": reply
-    })
-
-    return reply
 
 def main():
     print("✅ Bot started! Press CTRL+C to stop.")
@@ -163,55 +275,29 @@ def main():
 
                     if user_text == "/start":
                         send_message(chat_id,
-                            "Hello! I'm your business idea consultant 💡\n\n"
-                            "Share your business idea and let's build it together!\n\n"
-                            "I can also help you with real-time data:\n"
-                            "🔥 /trends [topic] — e.g. /trends coffee shop\n"
-                            "📰 /news [topic] — e.g. /news electric cars\n"
-                            "🏢 /competitors [topic] — e.g. /competitors food delivery\n\n"
-                            "Type /reset to start a fresh conversation.")
+                            "Hello! I'm your online income consultant 💰\n\n"
+                            "I help you make real money from your website, blog, or online presence.\n\n"
+                            "I research tools and strategies in real-time before recommending anything — so my advice is always current.\n\n"
+                            "Tell me about your website or idea and let's get started!\n\n"
+                            "/reset — Start a new conversation\n"
+                            "/help — What I can do")
                         continue
 
                     if user_text == "/reset":
                         conversation_histories.pop(user_id, None)
-                        send_message(chat_id, "🔄 Conversation reset. Tell me a new idea!")
+                        send_message(chat_id, "🔄 Conversation reset. Tell me about your site or idea!")
                         continue
 
                     if user_text == "/help":
                         send_message(chat_id,
                             "Here's what I can do:\n\n"
-                            "💡 Analyze your business idea\n"
-                            "📊 Evaluate market opportunities\n"
-                            "⚠️ Identify risks and challenges\n"
-                            "🎯 Suggest target audience\n"
-                            "💰 Propose monetization strategies\n\n"
-                            "Real-time data commands:\n"
-                            "🔥 /trends [topic]\n"
-                            "📰 /news [topic]\n"
-                            "🏢 /competitors [topic]\n\n"
-                            "/reset — Start a new conversation\n"
-                            "/help — Show this message")
-                        continue
-
-                    if user_text.startswith("/trends "):
-                        topic = user_text[8:].strip()
-                        send_typing(chat_id)
-                        result = get_trends(topic)
-                        send_message(chat_id, result)
-                        continue
-
-                    if user_text.startswith("/news "):
-                        topic = user_text[6:].strip()
-                        send_typing(chat_id)
-                        result = get_news(topic)
-                        send_message(chat_id, result)
-                        continue
-
-                    if user_text.startswith("/competitors "):
-                        topic = user_text[13:].strip()
-                        send_typing(chat_id)
-                        result = get_competitors(topic)
-                        send_message(chat_id, result)
+                            "💰 Find the best monetization methods for your niche\n"
+                            "📈 Research trending topics you can write about\n"
+                            "🔍 Find affiliate programs in your niche\n"
+                            "🚦 Give you SEO and traffic strategies\n"
+                            "🛠 Recommend tools (always researched, never guessed)\n\n"
+                            "/reset — Start fresh\n"
+                            "/help — This message")
                         continue
 
                     send_typing(chat_id)
