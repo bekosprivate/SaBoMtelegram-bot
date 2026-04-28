@@ -194,7 +194,7 @@ def chat_with_groq(user_id, user_message):
         iteration += 1
         try:
             response = client.chat.completions.create(
-                model="llama3-groq-70b-8192-tool-use-preview",
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
@@ -203,7 +203,7 @@ def chat_with_groq(user_id, user_message):
         except Exception as e:
             print(f"Tool call failed, retrying without tools: {e}")
             response = client.chat.completions.create(
-                model="llama3-groq-70b-8192-tool-use-preview",
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=messages,
                 max_tokens=1024
             )
