@@ -16,13 +16,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_web",
-            "description": "Search the web for current information about monetization tools, platforms, affiliate programs, SEO strategies, traffic methods, or any online business topic. Use this before recommending any tool or platform to make sure it's legitimate and currently working.",
+            "description": "Search the web for current information about monetization tools, platforms, affiliate programs, SEO strategies, traffic methods, or any online business topic. Use this before recommending any tool or platform.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query. Be specific. Example: 'best affiliate programs for recipe blogs 2024' or 'Linkvertise alternatives less annoying users'"
+                        "description": "The search query. Be specific. Example: 'best affiliate programs for recipe blogs 2024'"
                     }
                 },
                 "required": ["query"]
@@ -39,7 +39,7 @@ TOOLS = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The news search query. Example: 'recipe trends 2024' or 'personal finance tips trending'"
+                        "description": "The news search query. Example: 'recipe trends 2024'"
                     }
                 },
                 "required": ["query"]
@@ -67,7 +67,7 @@ TOOLS = [
 
 SYSTEM_PROMPT = """You are an expert online income consultant and digital marketing advisor. Your job is to help people make real money online.
 
-VERY IMPORTANT: Before recommending ANY tool, platform, affiliate program, or strategy, you MUST use your search tools to research it first. Never recommend something without searching for it. This way your advice is always current and accurate.
+VERY IMPORTANT: Before recommending ANY tool, platform, affiliate program, or strategy, you MUST use your search tools to research it first. Never recommend something without searching for it first.
 
 When a user comes to you, follow this flow:
 
@@ -187,18 +187,35 @@ def chat_with_groq(user_id, user_message):
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_histories[user_id]
 
-    while True:
-        response = client.chat.completions.create(
-            model="mixtral-8x7b-32768",
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            max_tokens=1024
-        )
+    max_iterations = 5
+    iteration = 0
+
+    while iteration < max_iterations:
+        iteration += 1
+        try:
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
+                max_tokens=1024
+            )
+        except Exception as e:
+            print(f"Tool call failed, retrying without tools: {e}")
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                max_tokens=1024
+            )
+            reply = response.choices[0].message.content
+            conversation_histories[user_id].append({
+                "role": "assistant",
+                "content": reply
+            })
+            return reply
 
         message = response.choices[0].message
 
-        # Bot araç kullanmak istiyorsa
         if message.tool_calls:
             messages.append({
                 "role": "assistant",
@@ -216,27 +233,28 @@ def chat_with_groq(user_id, user_message):
             })
 
             for tool_call in message.tool_calls:
-                tool_name = tool_call.function.name
-                tool_args = json.loads(tool_call.function.arguments)
-                print(f"🔍 Bot searching: {tool_name}({tool_args})")
-                result = run_tool(tool_name, tool_args)
+                try:
+                    tool_name = tool_call.function.name
+                    tool_args = json.loads(tool_call.function.arguments)
+                    print(f"🔍 Bot searching: {tool_name}({tool_args})")
+                    result = run_tool(tool_name, tool_args)
+                except Exception as e:
+                    result = f"Search failed: {e}"
 
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "content": result
                 })
-
         else:
-            # Normal cevap
             reply = message.content
-
             conversation_histories[user_id].append({
                 "role": "assistant",
                 "content": reply
             })
-
             return reply
+
+    return "I had trouble researching that. Could you rephrase your question?"
 
 def get_updates(offset=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
@@ -277,7 +295,7 @@ def main():
                         send_message(chat_id,
                             "Hello! I'm your online income consultant 💰\n\n"
                             "I help you make real money from your website, blog, or online presence.\n\n"
-                            "I research tools and strategies in real-time before recommending anything — so my advice is always current.\n\n"
+                            "I research tools and strategies in real-time before recommending anything — so my advice is always current and accurate.\n\n"
                             "Tell me about your website or idea and let's get started!\n\n"
                             "/reset — Start a new conversation\n"
                             "/help — What I can do")
