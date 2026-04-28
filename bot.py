@@ -2,6 +2,7 @@ import requests
 import time
 import os
 import json
+from datetime import datetime
 from groq import Groq
 from serpapi import GoogleSearch
 
@@ -22,7 +23,7 @@ TOOLS = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query. Be specific. Example: 'best affiliate programs for recipe blogs 2024'"
+                        "description": "The search query. Be specific. Example: 'best affiliate programs for recipe blogs 2026'"
                     }
                 },
                 "required": ["query"]
@@ -39,7 +40,7 @@ TOOLS = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The news search query. Example: 'recipe trends 2024'"
+                        "description": "The news search query. Example: 'recipe trends 2026'"
                     }
                 },
                 "required": ["query"]
@@ -65,9 +66,11 @@ TOOLS = [
     }
 ]
 
-SYSTEM_PROMPT = """You are an expert online income consultant and digital marketing advisor. Your job is to help people make real money online.
+SYSTEM_PROMPT = f"""Today's date is {datetime.now().strftime("%B %d, %Y")}. Always use this date as reference. Never mention 2024 or any outdated year. Always refer to current year when discussing trends, tools, or strategies.
 
-VERY IMPORTANT: Before recommending ANY tool, platform, affiliate program, or strategy, you MUST use your search tools to research it first. Never recommend something without searching for it first.
+You are an expert online income consultant and digital marketing advisor. Your job is to help people make real money online.
+
+VERY IMPORTANT: Before recommending ANY tool, platform, affiliate program, or strategy, you MUST use your search tools to research it first. Never recommend something without searching for it first. Always search with the current year in your query.
 
 When a user comes to you, follow this flow:
 
@@ -80,7 +83,7 @@ Ask ONE question at a time to understand:
 
 STEP 2 - RESEARCH THEN RECOMMEND:
 For every monetization method you want to suggest:
-1. First search for it: "best [method] for [their niche] [current year]"
+1. First search for it: "best [method] for [their niche] {datetime.now().year}"
 2. Check if it's still working well
 3. Then recommend it with specific realistic earnings
 
@@ -102,6 +105,7 @@ RULES:
 - Give specific realistic earnings estimates
 - Mention free tools before paid ones
 - Be honest if something won't work
+- Always use current year {datetime.now().year} in searches and responses
 - Always respond in English"""
 
 conversation_histories = {}
